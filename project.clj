@@ -6,4 +6,7 @@
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [liberator "0.9.0"]
                  [compojure "1.1.5"]
-                 [ring/ring-jetty-adapter "1.2.0"]])
+                 [ring/ring-jetty-adapter "1.2.0"]
+                 [org.clojure/java.jdbc "0.2.3"]
+                 [korma "0.3.0-RC5"]
+                 [org.xerial/sqlite-jdbc "3.7.2"]])
