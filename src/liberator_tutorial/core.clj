@@ -28,30 +28,42 @@
 (korma.db/defdb korma-db db)
 
 (defn create-database []
-  (korma.core/exec-raw "CREATE TABLE measure ( UID INTEGER PRIMARY KEY ASC, SERVICE TEXT NOT NULL, KEY TEXT NOT NULL, TAGS TEXT, MEASURE FLOAT NOT NULL, TIME INTEGER NOT NULL)"))
+  (jdbc/with-connection db
+    (jdbc/do-commands " CREATE TABLE measure ( UID INTEGER PRIMARY KEY ASC, HOST TEXT DEFAULT NULL, SERVICE TEXT NOT NULL, KEY TEXT NOT NULL, TAGS TEXT DEFAULT NULL, MEASURE FLOAT NOT NULL, TIME INTEGER NOT NULL)")))
 
-(korma.core/defentity measure)
+(korma.core/defentity measure-entity
+  (korma.core/database db)
+  (korma.core/table :measure))
 
+; insert a measure and return the row identifier
 (defn insert-measure [measure]
-  (korma.core/insert measure
-          (korma.core/values [{:host (:host measure)
-                    :service (:service measure)
-                    :key (:key measure)
-                    :measure (:measure measure)
-                    :tags (:tags measure)
-                    :time (:time measure)}])))
+  (let [korma_result (korma.core/insert measure-entity
+                                        (korma.core/values [{:host (:host measure)
+                                                             :service (:service measure)
+                                                             :key (:key measure)
+                                                             :measure (:measure measure)
+                                                             :tags (:tags measure)
+                                                             :time (:time measure)}]))]
+    ((keyword "last_insert_rowid()") korma_result)))
 
-(defn retrieve-measures [params]
-  (korma.core/select measure
-                     (korma.core/where
-                      {:host (:host params)
-                       :service (:service params)
-                       :key (:key params)
-                       :measure (:measure params)
-                       :tags [like (:tags params)]
-                       (and 
-                        :time [>= (:from params)]
-                        :time) [<= (:to params)]})))
+(defn add-where [query condition]
+  (if-not (nil? condition)
+    (-> query (korma.core/where condition))
+    query))
+
+(defn retrieve-measures [params & execute?]
+  (let [{:keys [host service key tags from to]} params]
+    (-> (korma.core/select* measure-entity)
+        (add-where (if-not (nil? host) {:host host} nil))
+        (add-where {:service service})
+        (add-where {:key key})
+        (add-where (if-not (nil? from) {:time [korma.sql.fns/pred-> from]} nil))
+        (add-where (if-not (nil? to) {:time [korma.sql.fns/pred-< to]} nil))
+        (add-where (if-not (nil? tags) {:tags [korma.sql.fns/pred-like tags]} nil))
+        (korma.core/exec)
+        )    
+    
+    ))
 
 ;; convert the body to a reader. Useful for testing in the repl
 ;; where setting the body to a string is much simpler.
@@ -85,14 +97,16 @@
   (if-let [request (:request ctx)]
     (if-let [params (:params request)]
       (let [_ (info "Params are " params)
-            {:keys [host service key tags time]} params]
+            {:keys [host service key tags from to]} params]
         (if (or (nil? service) (nil? key))
           [true {}]
           ;first param is boolean, which is result of the function
 ;malformed-
           ;second param is merged with ctx, can be extracted in the
-          ;following function
-          [false {:download-params { :host host :service service :key key}}])))
+                                        ;following function
+          (let [from* (if (nil? from ) 0 from)
+                to* (if  (nil? to) Integer/MAX_VALUE to)]
+            [false {:download-params { :host host :service service :key key :from from :to to}}]))))
     )
   )
 
@@ -105,7 +119,7 @@
               data (json/read-str body :key-fn keyword)
               _ (info "malformed-measure? data = " data)]
           (if-let [measure (format-upload-measure data)]
-            [false {key data}]
+            [false {key measure}]
             {:message "Wrong format"}))
         {:message "No body"})
       (catch Exception e
@@ -127,20 +141,19 @@
 (defresource resource-upload-measure
   :allowed-methods [:post]
   :available-media-types ["text/json"]
-  ;; :malformed?
-  ;; (fn [ctx]
-  ;;   (malformed-upload-measure? ctx :parsed-measure))
-  ;; :post! (fn [ctx]
-  ;;          (let [_ (info "wellformed-measure = " (ctx :parsed-measure))
-  ;;                id (insert-measure (ctx :parsed-measure))]
-  ;;            {:parsed-measure-id 45}
-  ;;            ))
-  ;; :post-redirect? false
-  ;; :new? true
-  ;; :handle-created (fn [ctx]
-  ;;                   (let [location (format "/upload-measure/%d" (ctx :parsed-measure-id))]
-  ;;                     (json/write-str {:headers {"Location" location}
-  ;;                                      :body (ctx :parsed-measure)})))
+  :malformed? (fn [ctx]
+                (malformed-upload-measure? ctx :parsed-measure))
+  :post! (fn [ctx]
+           (let [_ (info "wellformed-measure = " (ctx :parsed-measure))
+                 id (insert-measure (ctx :parsed-measure))]
+             {:parsed-measure-id id}
+             ))
+  :post-redirect? false
+  :new? true
+  :handle-created (fn [ctx]
+                    (let [location (format "/upload-measure/%d" (ctx :parsed-measure-id))]
+                      (json/write-str {:headers {"Location" location}
+                                       :body (ctx :parsed-measure)})))
   )
 
 (defresource resource-test 
