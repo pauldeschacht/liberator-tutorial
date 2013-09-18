@@ -1,69 +1,19 @@
 (ns liberator-tutorial.core
-  (:require [liberator.core :refer [resource defresource]]
+  (:require [liberator-tutorial.db :as db]
+            [liberator.core :refer [resource defresource]]
+   
             [ring.adapter.jetty :refer [run-jetty]]      
-            [compojure.core :refer [defroutes ANY]]
+            [compojure.core :refer [defroutes ANY POST GET]]
             [compojure.handler]
             [ring.middleware.params]
             [ring.middleware.keyword-params]
             [ring.util.codec :as codec]
-
-            [clojure.java.jdbc :as jdbc]
-            [korma.core]
-            [korma.db]
             
             [clojure.tools.logging :refer (info error warn fatal)]
             [clojure.data.json :as json]
             [clj-time.core :as timecore]
             [clj-time.coerce :as timecoerce]
             [clojure.java.io :as io]))
-
-
-;;
-;; database access (sqlite at the moment)
-;;
-(def db {:classname   "org.sqlite.JDBC"
-         :subprotocol "sqlite"
-         :subname     "measures.db"})
-
-(korma.db/defdb korma-db db)
-
-(defn create-database []
-  (jdbc/with-connection db
-    (jdbc/do-commands " CREATE TABLE measure ( UID INTEGER PRIMARY KEY ASC, HOST TEXT DEFAULT NULL, SERVICE TEXT NOT NULL, KEY TEXT NOT NULL, TAGS TEXT DEFAULT NULL, MEASURE FLOAT NOT NULL, TIME INTEGER NOT NULL)")))
-
-(korma.core/defentity measure-entity
-  (korma.core/database db)
-  (korma.core/table :measure))
-
-; insert a measure and return the row identifier
-(defn insert-measure [measure]
-  (let [korma_result (korma.core/insert measure-entity
-                                        (korma.core/values [{:host (:host measure)
-                                                             :service (:service measure)
-                                                             :key (:key measure)
-                                                             :measure (:measure measure)
-                                                             :tags (:tags measure)
-                                                             :time (:time measure)}]))]
-    ((keyword "last_insert_rowid()") korma_result)))
-
-(defn add-where [query condition]
-  (if-not (nil? condition)
-    (-> query (korma.core/where condition))
-    query))
-
-(defn retrieve-measures [params & execute?]
-  (let [{:keys [host service key tags from to]} params]
-    (-> (korma.core/select* measure-entity)
-        (add-where (if-not (nil? host) {:host host} nil))
-        (add-where {:service service})
-        (add-where {:key key})
-        (add-where (if-not (nil? from) {:time [korma.sql.fns/pred-> from]} nil))
-        (add-where (if-not (nil? to) {:time [korma.sql.fns/pred-< to]} nil))
-        (add-where (if-not (nil? tags) {:tags [korma.sql.fns/pred-like tags]} nil))
-        (korma.core/exec)
-        )    
-    
-    ))
 
 ;; convert the body to a reader. Useful for testing in the repl
 ;; where setting the body to a string is much simpler.
@@ -89,8 +39,22 @@
                     :measure measure
                     :tags tags
                     :time time*}]
-        (info "format-measure result: " result)
         result))))
+
+; verify if every measure respects the mandatory fields (service, key
+                                        ; and measure)
+; return a vector of formatted measures
+(defn format-upload-measures [measures]
+  (if (map? measures)
+    (let [measures* (format-upload-measure measures)]
+      (if (false? measures*)
+        false
+        [measures*])
+      )
+    (let [measures* (map #(format-upload-measure %1) measures)]
+      (if (some false? measures*)
+        false
+        measures*))))
 
 ; check if the query contains the mandatory elements: service and key
 (defn malformed-download-measure? [ctx]
@@ -100,10 +64,8 @@
             {:keys [host service key tags from to]} params]
         (if (or (nil? service) (nil? key))
           [true {}]
-          ;first param is boolean, which is result of the function
-;malformed-
-          ;second param is merged with ctx, can be extracted in the
-                                        ;following function
+          ;first param is boolean, which is result of the function malformed?
+          ;second param is merged with ctx, can be extracted in the following function (handler-ok or post!)
           (let [from* (if (nil? from ) 0 from)
                 to* (if  (nil? to) Integer/MAX_VALUE to)]
             [false {:download-params { :host host :service service :key key :from from :to to}}]))))
@@ -111,80 +73,96 @@
   )
 
 ; service, key and measure are mandatory. time is either nil or an integer
-(defn malformed-upload-measure? [ctx key]
+(defn malformed-upload-measure? [ctx]
   (when (#{:put :post} (get-in ctx [:request :request-method]))
     (try
       (if-let [body (body-as-string ctx)]
-        (let [_ (info "malformed-measure? body = " body)
-              data (json/read-str body :key-fn keyword)
-              _ (info "malformed-measure? data = " data)]
-          (if-let [measure (format-upload-measure data)]
-            [false {key measure}]
-            {:message "Wrong format"}))
-        {:message "No body"})
+        (let [data (json/read-str body :key-fn keyword)]
+          (if-let [measures (format-upload-measures data)]
+            [false {:parsed-measure measures}]
+            [true {:message "Wrong format"}]))
+        [true {:message "No body"}])
       (catch Exception e
-        (error "malformed-measure: " e)
+        (error "malformed-upload-measure: " e)
         {:message (format "IOException: " (.getMessage e))}))))
 
-(defresource resource-download-measure
+(defn row-to-csv [row]
+  (let [{:keys [HOST SERVICE KEY TIME MEASURE TAGS]} row]
+    (apply str (interpose "," [HOST SERVICE KEY TIME MEASURE TAGS]))))
+
+(defn row-to-hiccup [row]
+  (let [{:keys [HOST SERVICE KEY TIME MEASURE TAGS]} row]
+    [:measure [:host HOST] [:service SERVICE] [:key KEY] [:time TIME] [:measure MEASURE] [:tags TAGS]]))
+
+(defn rows-to-xml [rows]
+  (hiccup.core/html
+   [:measures (map #(row-to-hiccup %1) rows)]))
+
+(defn rows-to-json [rows]
+  (json/write-str rows :key-fn #(clojure.string/lower-case %)))
+
+(defn rows-to-csv [rows]
+  (apply str (interpose "\n" (map #(row-to-csv %1) rows))))
+
+(defresource resource-download-measures
   :allowed-methods [:get]
-  :available-media-types ["text/html" "text/json" "text/csv"]
+  :available-media-types ["text/plain" "text/json" "text/csv" "text/xml"]
   :malformed? (fn [ctx]
-                (let [_ (info "resource-download-measure")]
-                  (malformed-download-measure? ctx)))
+                (malformed-download-measure? ctx))
   :handle-ok (fn [ctx]
-               (let [_ (info "Download measure "(:request ctx))
-                     _ (info "Extract service " (:download-params ctx))]
-                  "<html>GET /download-measure is OK</html>"))
-                 )
+               (let [mediatype (get-in ctx [:representation :media-type])
+                     result (db/retrieve-measures (:download-params ctx))]
+                 (condp = mediatype
+                   "text/csv" (rows-to-csv result)
+                   "text/json" (rows-to-json result)
+                   "text/xml" (rows-to-xml result)
+                   (rows-to-csv result))
+                  )))
+
+(defresource resource-download-measure [id]
+  :allowed-methods [:get]
+  :available-media-types ["text/plain" "text/json" "text/csv" "text/xml"]
+  :handle-ok (fn [ctx]
+               (let [mediatype (get-in ctx [:representation :media-type])
+                     result (db/retrieve-measure id)]
+                 (condp = mediatype
+                   "text/csv" (rows-to-csv result)
+                   "text/json" (rows-to-json result)
+                   "text/xml" (rows-to-xml result)
+                   (rows-to-csv result))
+                 ))
+  )
 
 (defresource resource-upload-measure
   :allowed-methods [:post]
   :available-media-types ["text/json"]
   :malformed? (fn [ctx]
-                (malformed-upload-measure? ctx :parsed-measure))
+                (malformed-upload-measure? ctx))
   :post! (fn [ctx]
-           (let [_ (info "wellformed-measure = " (ctx :parsed-measure))
-                 id (insert-measure (ctx :parsed-measure))]
-             {:parsed-measure-id id}
-             ))
+           (let [row-id (db/insert-measures (ctx :parsed-measure))]
+             {:parsed-measure-id row-id}))
   :post-redirect? false
   :new? true
   :handle-created (fn [ctx]
-                    (let [location (format "/upload-measure/%d" (ctx :parsed-measure-id))]
+                    (let [rowid (ctx :parsed-measure-id)
+                          location (format "/upload-measure/%d" rowid)]
                       (json/write-str {:headers {"Location" location}
-                                       :body (ctx :parsed-measure)})))
-  )
-
-(defresource resource-test 
-  :available-media-types ["text/html"]
-  :handle-ok (fn [ctx] (
-                       let [_ (info "Test")
-                            _ (info (:request ctx))]
-                        "<html>Test OK</html>"
-                        )
-               )
+                                       :rowid rowid
+                                       ;:body (ctx :parsed-measure)
+                                       })))
   )
 
 ; the data-routes are wrapped in wrap-params and wrap-result-in-json
 (defroutes data-routes
-  (ANY "/upload-measure" [] resource-upload-measure)
-  (ANY "/download-measure" [] resource-download-measure)
-  (ANY "/test" [] resource-test)
-  
-  )
-(defroutes my-routes
-  (-> (compojure.handler/api data-routes)
-      ;TODO wrap-result-in-json
-      )
-   ;; (ANY "/" [] (resource
-   ;;             :available-media-types ["text/html"]
-   ;;             :handle-ok "<html>OK</html>"))
-  )
+  (POST "/measure" [] resource-upload-measure)
+  (GET "/measure/:id" [id] (resource-download-measure id))
+  (GET "/measure" [] resource-download-measures))
+
+(def app
+  (-> (compojure.handler/api data-routes)))
 
 ; use (.stop server) and (.start server) in REPL
-(defonce server (run-jetty #'my-routes
-                           {:port 3000 :join? false}))
+(defonce server (run-jetty #'app {:port 3000 :join? false}))
 
 
 
