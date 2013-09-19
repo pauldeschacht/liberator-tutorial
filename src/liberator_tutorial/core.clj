@@ -60,15 +60,14 @@
 (defn malformed-download-measure? [ctx]
   (if-let [request (:request ctx)]
     (if-let [params (:params request)]
-      (let [_ (info "Params are " params)
-            {:keys [host service key tags from to]} params]
+      (let [{:keys [host service key tags from to]} params]
         (if (or (nil? service) (nil? key))
           [true {}]
           ;first param is boolean, which is result of the function malformed?
           ;second param is merged with ctx, can be extracted in the following function (handler-ok or post!)
           (let [from* (if (nil? from ) 0 from)
                 to* (if  (nil? to) Integer/MAX_VALUE to)]
-            [false {:download-params { :host host :service service :key key :from from :to to}}]))))
+            [false {:download-params {:host host :service service :key key :from from :to to :tags tags}}]))))
     )
   )
 
@@ -99,7 +98,7 @@
    [:measures (map #(row-to-hiccup %1) rows)]))
 
 (defn rows-to-json [rows]
-  (json/write-str rows :key-fn #(clojure.string/lower-case %)))
+  (json/write-str rows :key-fn #(clojure.string/lower-case (name  %))))
 
 (defn rows-to-csv [rows]
   (apply str (interpose "\n" (map #(row-to-csv %1) rows))))
@@ -146,10 +145,14 @@
   :handle-created (fn [ctx]
                     (let [rowid (ctx :parsed-measure-id)
                           location (format "/upload-measure/%d" rowid)]
-                      (json/write-str {:headers {"Location" location}
-                                       :rowid rowid
-                                       ;:body (ctx :parsed-measure)
-                                       })))
+
+
+                      ;; (json/write-str {:headers {"Location" location}
+                      ;;                  :rowid rowid
+                      ;;                   ;:body (ctx :parsed-measure)
+                      ;;                  })
+                      (liberator.representation/ring-response {:headers {"Location" location "rowid" (str rowid)}})
+                      ))
   )
 
 ; the data-routes are wrapped in wrap-params and wrap-result-in-json
