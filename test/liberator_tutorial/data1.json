@@ -1,0 +1,6 @@
+[
+{ "service": "MIDT", "key" : "1A", "measure": 1000, "time": 123456},
+{ "service": "MIDT", "key" : "1A", "measure": 1001, "time": 123457},
+{ "service": "MIDT", "key" : "1A", "measure": 1002, "time": 123458},
+{ "service": "MIDT", "key" : "1A", "measure": 1003, "time": 123459}
+]
