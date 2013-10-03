@@ -1,13 +1,12 @@
-# liberator-tutorial
+Quality Monitor
+===============
 
-A Clojure library designed to ... well, that part is up to you.
 
-## Usage
+Quality Monitor implemented as REST web service. 
 
-FIXME
+The web service is based on [liberator](clojure-liberator.github.io/liberator). External scripts upload metrics to the web service (such as cpu usage, file size). The format for the metric is inspired by [riemann.io](http://riemann.io) and is done as JSON over HTTP.
 
-## License
+External and internals scripts retrieve the metrics and will calculate the quality of these metrics. The quality is uploaded again to the web service and can eventually trigger an alert (if quality is below is given threshold)
 
-Copyright © 2013 FIXME
 
-Distributed under the Eclipse Public License, the same as Clojure.
+

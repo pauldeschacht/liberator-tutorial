@@ -3,15 +3,23 @@
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.5.1"]
-                 [liberator "0.9.0"]
-                 [compojure "1.1.5"]
-                 [ring/ring-jetty-adapter "1.2.0"]
-                 [org.clojure/java.jdbc "0.2.3"]
-                 [korma "0.3.0-RC5"]
-                 [org.xerial/sqlite-jdbc "3.7.2"]
-                 [org.clojure/data.xml "0.0.7"]
-                 [org.clojure/data.json "0.2.3"]
-                 [ring-mock "0.1.5" :scope "test"]
+  :dependencies [[org.clojure/clojure "1.5.1" :debian nil]
+                 [org.clojure/algo.generic "0.1.1" :debian nil]
+                 [incanter/incanter-core "1.5.4" :debian nil]
+                 [liberator "0.9.0" :debian nil]
+                 [compojure "1.1.5" :debian nil]
+                 [ring/ring-jetty-adapter "1.2.0" :debian nil]
+                 [org.clojure/java.jdbc "0.2.3" :debian nil]
+                 [korma "0.3.0-RC5" :debian nil]
+                 [org.xerial/sqlite-jdbc "3.7.2" :debian [libsqlitejdbc.so] ]
+                 [org.clojure/data.xml "0.0.7" :debian nil]
+                 [org.clojure/data.json "0.2.3" :debian nil]
+                 [ring-mock "0.1.5" :scope "test" :debian nil]
                  ]
+  :target-path "target"
+  :plugins [[lein-debian "0.14.0-SNAPSHOT"]]
+
+  :repositories [["snapshots" "file:/home/pdeschacht/.m2/local/"]]
+
+  :debian {:dependencies []}
 )
