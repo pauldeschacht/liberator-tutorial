@@ -8,5 +8,9 @@ The web service is based on [liberator](clojure-liberator.github.io/liberator). 
 
 External and internals scripts retrieve the metrics and will calculate the quality of these metrics. The quality is uploaded again to the web service and can eventually trigger an alert (if quality is below is given threshold)
 
+Outlier detection : blog.artek-consulting.com/?p=35
+
+
+
 
 

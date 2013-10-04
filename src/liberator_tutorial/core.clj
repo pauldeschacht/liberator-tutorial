@@ -15,11 +15,6 @@
             [ring.util.codec :as codec]
             
             [clojure.tools.logging :refer (info error warn fatal)]
-;            [clojure.data.json :as json]
-;            [clj-time.core :as timecore]
-;            [clj-time.coerce :as timecoerce]
-;            [clojure.java.io :as io]
-
             ))
 
 
@@ -31,7 +26,10 @@
                 (metric/malformed-download-metric? ctx))
   :handle-ok (fn [ctx]
                (let [mediatype (get-in ctx [:representation :media-type])
-                     rows (db/retrieve-measures (:download-params ctx))]
+                     rows (db/retrieve-measures (:download-params ctx))
+                     _ (logg rows)
+                     _ (logg mediatype)]
+                 
                  (utils/format-result rows mediatype)
                   )))
 
@@ -42,8 +40,7 @@
                (let [mediatype (get-in ctx [:representation :media-type])
                      rows (db/retrieve-measures id)]
                  (utils/format-result rows mediatype)
-                 ))
-  )
+                 )))
 
 (defresource resource-upload-metric
   :allowed-methods [:post]
@@ -59,8 +56,7 @@
                     (let [rowid (ctx :parsed-metric-id)
                           location (format "/metric/%d" rowid)]
                       (liberator.representation/ring-response {:headers {"Location" location "rowid" (str rowid)}})
-                      ))
-  )
+                      )))
 
 (defresource count-metrics
   :allowed-methods [:get]
@@ -73,10 +69,10 @@
                      str-period (get-in ctx [:download-params :period])
                      period (utils/create-period str-period)
                      ]
-                 (count/calculate-count selection mediatype period)
+                 (-> 
+                  (count/calculate-count selection mediatype period)
+                  (utils/format-result mediatype))
                  )))
-
-
 
 (defn logg [rows]
   (info rows)
@@ -90,7 +86,8 @@
   :handle-ok (fn [ctx]
                (let [mediatype (get-in ctx [:representation :media-type])
                      selection (:download-params ctx)]
-                 (outliers/calculate-outliers selection mediatype))))
+                 (-> (outliers/calculate-outliers selection)
+                     (utils/format-result mediatype)))))
 
 ; the data-routes are wrapped in wrap-params and wrap-result-in-json
 (defroutes data-routes

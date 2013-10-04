@@ -6,6 +6,7 @@
   :dependencies [[org.clojure/clojure "1.5.1" :debian nil]
                  [org.clojure/algo.generic "0.1.1" :debian nil]
                  [incanter/incanter-core "1.5.4" :debian nil]
+                 [incanter/incanter-charts "1.5.4" :debain nil]
                  [liberator "0.9.0" :debian nil]
                  [compojure "1.1.5" :debian nil]
                  [ring/ring-jetty-adapter "1.2.0" :debian nil]

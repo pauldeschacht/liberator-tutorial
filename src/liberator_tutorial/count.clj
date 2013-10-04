@@ -17,13 +17,12 @@
 (defn count-data-by-period [data]
   (utils/aggregate-data-by-period data count))
 
-(defn calculate-count [selection mediatype period]
+(defn calculate-count [selection period]
   (-> (db/retrieve-measures selection)
       (utils/epoch-to-date-rows)
       (utils/group-data-by-period period)
       (count-data-by-period)
-      (utils/flatten-grouped-data :number-files)
-      (utils/format-result mediatype))
+      (utils/flatten-grouped-data :number-files))
   
   )
 

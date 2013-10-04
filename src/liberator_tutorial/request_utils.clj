@@ -6,6 +6,8 @@
             [clj-time.core :as timecore]
             [clj-time.coerce :as timecoerce]
 
+            [hiccup.core]
+
             )
   )
 

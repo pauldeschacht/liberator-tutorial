@@ -18,8 +18,20 @@
     )
   )
 
-(defn calculate-outliers [selection mediatype]
-  (-> (db/retrieve-measures selection)
-      (utils/extract-metrics-from-rows)
-      (outlier-core/outliers-iqr 9 1.5)
-      (utils/format-result mediatype)))
+(defn in? [e seq]
+  (some #(= e %) seq))
+
+(defn insert-outlier-info-into-rows [rows outliers]
+  (let [outliers-index (map #(:idx %) outliers)]
+    (map #(if (in? %1 outliers-index)
+            (assoc %2 :outlier true)
+            (assoc %2 :outlier false))
+         (iterate inc 1) rows))
+  )
+
+(defn calculate-outliers [selection]
+  (let [rows (db/retrieve-measures selection)
+        metrics (utils/extract-metrics-from-rows rows)
+        outliers (outlier-core/outliers-iqr metrics 9 1.5)]
+    (insert-outlier-info-into-rows rows outliers)
+    ))
