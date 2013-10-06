@@ -60,8 +60,13 @@
 ; different formatting tools (csv,json and xml)
 ;
 (defn row-to-csv [row]
-  (let [{:keys [HOST SERVICE KEY TIME MEASURE TAGS]} row]
-    (apply str (interpose "," [HOST SERVICE KEY TIME MEASURE TAGS]))))
+  (let [;header (keys rows)
+        values (vals row)
+        ;{:keys [HOST SERVICE KEY TIME MEASURE TAGS]} row
+        ]
+                                        ;    (apply str (interpose "," [HOST SERVICE KEY TIME MEASURE TAGS]))
+        (apply str (interpose "," values))
+    ))
 
 (defn row-to-hiccup [row]
   (let [{:keys [HOST SERVICE KEY TIME MEASURE TAGS]} row]
@@ -75,7 +80,10 @@
   (json/write-str rows :key-fn #(clojure.string/lower-case (name  %))))
 
 (defn rows-to-csv [rows]
-  (apply str (interpose "\n" (map #(row-to-csv %1) rows))))
+  (str
+   (apply str (interpose "," (keys (first rows))))
+   "\n"
+   (apply str (interpose "\n" (map #(row-to-csv %1) rows)))))
 
 (defn format-result [rows mediatype]
   (condp = mediatype

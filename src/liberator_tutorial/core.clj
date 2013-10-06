@@ -17,6 +17,9 @@
             [clojure.tools.logging :refer (info error warn fatal)]
             ))
 
+(defn logg [rows]
+  (info rows)
+  rows)
 
 
 (defresource resource-download-metric
@@ -74,9 +77,6 @@
                   (utils/format-result mediatype))
                  )))
 
-(defn logg [rows]
-  (info rows)
-  rows)
 
 (defresource outlier-detection
   :allowed-methods [:get]
