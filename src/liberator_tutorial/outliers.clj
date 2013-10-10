@@ -2,6 +2,8 @@
   (:require [liberator-tutorial.db :as db]
             [liberator-tutorial.request-utils :as utils]
             [liberator-tutorial.outlier.core :as outlier-core]
+
+            [clojure.tools.logging :refer (info error warn fatal)]
             ))
 
 (defn malformed-outliers? [ctx]
@@ -26,11 +28,12 @@
     (map #(if (in? %1 outliers-index)
             (assoc %2 :outlier true)
             (assoc %2 :outlier false))
-         (iterate inc 1) rows))
+         (iterate inc 0) rows))
   )
 
 (defn calculate-outliers [selection]
   (let [rows (db/retrieve-measures selection)
+        _ (warn "calculate outliers: " rows)
         metrics (utils/extract-metrics-from-rows rows)
         outliers (outlier-core/outliers-iqr metrics 9 1.5)]
     (insert-outlier-info-into-rows rows outliers)

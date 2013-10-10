@@ -46,7 +46,8 @@
 (defn malformed-download-metric? [ctx]
   (if-let [request (:request ctx)]
     (if-let [params (:params request)]
-      (let [{:keys [host service key tags from to]} params]
+      (let [{:keys [host service key tags from to]} params
+            _ (info "download metric params: " params)]
         (if (or (nil? service) (nil? key))
           [true {}]
           ;first param is boolean, which is result of the function malformed?
@@ -62,7 +63,10 @@
   (when (#{:put :post} (get-in ctx [:request :request-method]))
     (try
       (if-let [body (utils/body-as-string ctx)]
-        (let [data (json/read-str body :key-fn keyword)]
+        (let [
+              data (json/read-str body :key-fn keyword)
+              
+              ]
           (if-let [metrics (format-upload-metrics data)]
             [false {:parsed-metric metrics}]
             [true {:message "Wrong format"}]))

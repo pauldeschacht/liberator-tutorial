@@ -69,8 +69,8 @@
     ))
 
 (defn row-to-hiccup [row]
-  (let [{:keys [HOST SERVICE KEY TIME MEASURE TAGS]} row]
-    [:measure [:host HOST] [:service SERVICE] [:key KEY] [:time TIME] [:measure MEASURE] [:tags TAGS]]))
+  (let [{:keys [host service key time metric tags]} row]
+    [:measure [:host host] [:service service] [:key key] [:time time] [:metric metric] [:tags tags]]))
 
 (defn rows-to-xml [rows]
   (hiccup.core/html
@@ -81,7 +81,7 @@
 
 (defn rows-to-csv [rows]
   (str
-   (apply str (interpose "," (keys (first rows))))
+   (apply str (interpose "," (map #(name %) (keys (first rows)))))
    "\n"
    (apply str (interpose "\n" (map #(row-to-csv %1) rows)))))
 
@@ -102,8 +102,8 @@
     {:year year :month month :day-in-month dd :week week}))
 
 (defn epoch-to-date-rows [rows]
-  (map #(merge % (epoch-to-date (* 1000 (:TIME %)))) rows))
+  (map #(merge % (epoch-to-date (* 1000 (:time %)))) rows))
 
 (defn extract-metrics-from-rows [rows]
-  (map #(:MEASURE %) rows))
+  (map #(:measure %) rows))
 

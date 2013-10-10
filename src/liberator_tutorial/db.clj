@@ -22,7 +22,7 @@
 ;TODO use korma
 (defn create-measure-table [db]
   (jdbc/with-connection db
-    (jdbc/do-commands "CREATE TABLE measure ( UID INTEGER PRIMARY KEY ASC, HOST TEXT DEFAULT NULL, SERVICE TEXT NOT NULL, KEY TEXT NOT NULL, TAGS TEXT DEFAULT NULL, MEASURE FLOAT NOT NULL, TIME INTEGER NOT NULL)")))
+    (jdbc/do-commands "CREATE TABLE measure ( uid INTEGER PRIMARY KEY ASC, host TEXT DEFAULT NULL, service TEXT NOT NULL, key TEXT NOT NULL, tags TEXT DEFAULT NULL, measure FLOAT NOT NULL, time INTEGER NOT NULL)")))
 
 ;TODO use korma
 (defn drop-measure-table [db]
@@ -36,9 +36,10 @@
                                          [{:host (:host measure)
                                            :service (:service measure)
                                            :key (:key measure)
-                                           :measure (:measure measure)
+                                           :measure (:metric measure)
                                            :tags (:tags measure)
-                                           :time (:time measure)}]))]
+                                           :time (:time measure)}]))
+        ]
     ((keyword "last_insert_rowid()") korma_result)))
 
 (defn insert-measures [measures]
@@ -75,7 +76,7 @@
 ; retrieve the measures: service and key are mandatory
 (defn retrieve-measures [params & execute?]
   (let [{:keys [host service key tags from to]} params
-;        _ (warn  (retrieve-measures-debug params))
+        _ (info params)
         ]
     (-> (korma.core/select* measure-entity)
         (add-where (if-not (nil? host) {:host host} nil))
@@ -84,8 +85,8 @@
         (add-where (if-not (nil? from) {:time [korma.sql.fns/pred->= from]} nil))
         (add-where (if-not (nil? to) {:time [korma.sql.fns/pred-<= to]} nil))
         (add-where (if-not (nil? tags) {:tags [korma.sql.fns/pred-like tags]} nil))
-        (korma.core/exec)
-        )    
+        (korma.core/exec)     
+        )
     ))
 
 (defn retrieve-measure [id]
