@@ -9,7 +9,8 @@
             [liberator.conneg]
             [clojure.java.io :as io]
 
-            [ring.adapter.jetty :refer [run-jetty]]      
+                                        ;            [ring.adapter.jetty :refer [run-jetty]]
+            [org.httpkit.server :as httpkit]
             [compojure.core :refer [defroutes ANY POST GET]]
             [compojure.handler]
             [ring.middleware.params]
@@ -77,6 +78,7 @@
                 (metric/malformed-upload-metric? ctx))
   :post! (fn [ctx]
            (let [row-id (db/insert-measures (ctx :parsed-metric))]
+             (update-ws-clients (ctx :parsed-metric))
              {:parsed-metric-id row-id}))
   :post-redirect? false
   :new? true
@@ -117,6 +119,36 @@
                  (-> (outliers/calculate-outliers selection)
                      (utils/format-result mediatype)))))
 
+(def ws-channels (atom {}))
+
+(defn add-channel [key channel]
+  )
+
+(defn remove-channel [channel]
+  )
+
+(defn get-channels [key]
+  )
+
+(defn web-socket [request]
+  (httpkit/with-channel request channel
+    (swap! ws-channels assoc channel request)
+    (httpkit/on-close channel (fn [status]
+                        (info "channel closed")
+                        (swap! ws-channels dissoc channel)))
+    (httpkit/on-receive channel (fn [data]
+                          (info "received data from channel " data)
+                          (httpkit/send! channel data)))
+    ))
+
+(defn update-ws-clients [data]
+  (let [info {:status 200
+              :headers {"Content-Type" "application/json; charset=utf-8"}
+              :body (str "Hello from metric upload: " data)}] ;;data must be a
+    ;;string 
+    (doseq [channel (keys @ws-channels)]
+      (httpkit/send! channel info))))
+
 ; the data-routes are wrapped in wrap-params and wrap-result-in-json
 (defroutes data-routes
   (POST "/metric" [] resource-upload-metric)
@@ -125,10 +157,15 @@
   (GET "/count" []  count-metrics)
   (GET "/outliers/metric" [] outlier-detection)
   (GET "/static/:resource" [resource] static-resource)
+  (GET "/ws/" [] web-socket)
   )
 
 (def app
   (-> (compojure.handler/api data-routes)))
 
-; use (.stop server) and (.start server) in REPL
-(defonce server (run-jetty #'app {:port 3000 :join? false}))
+; with jetty use (.stop server) and (.start server) in REPL
+;(defonce server (run-jetty #'app {:port 3000 :join? false}))
+
+; httpkit the run-server returns a function that stops the server
+; call (server) to stop the service
+(def server (httpkit/run-server #'app {:port 3000 :join? false}))

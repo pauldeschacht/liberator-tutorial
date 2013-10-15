@@ -10,6 +10,7 @@
                  [liberator "0.9.0" :debian nil]
                  [compojure "1.1.5" :debian nil]
                  [ring/ring-jetty-adapter "1.2.0" :debian nil]
+                 [http-kit "2.1.12" :debian nil]
                  [org.clojure/java.jdbc "0.2.3" :debian nil]
                  [korma "0.3.0-RC5" :debian nil]
                  [org.xerial/sqlite-jdbc "3.7.2" :debian [libsqlitejdbc.so] ]
