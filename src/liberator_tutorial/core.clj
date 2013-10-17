@@ -25,6 +25,47 @@
   (info rows)
   rows)
 
+(def ws-channels (atom {}))
+
+(defn add-channel
+  "add a channel to the list of subscriptions. The subscription is based on a key."
+  [key channel]
+  (info "adding channel with key " key)
+  (swap! ws-channels #(assoc % key (if ( nil? (get % key))
+                                      [channel]
+                                      (conj (get % key) channel)))))
+
+(defn remove-channel
+  "remove the channel from *all* the subscriptions/keys"
+  [remove-me-channel]
+  (info "removing channel")
+  (swap! ws-channels (fn [keyed-channels]
+                       (apply merge {}
+                              (map (fn [key channels]
+                                     {key (filter
+                                           #(not = % remove-me-channel)
+                                           channels)})
+                                   (keys keyed-channels)
+                                   (vals keyed-channels))))))
+
+(defn get-channels
+  "first version: on take into account the exact same key
+TODO: make flexible: subscriber to {service MIDT} must also receive updates for {host some_machine service MIDT}"
+  
+  [key]
+  (get @ws-channels key)
+  )
+
+(defn update-ws-clients [request data]
+  (let [info {:status 200
+              :headers {"Content-Type" "application/json; charset=utf-8"}
+              :body (str "Hello from metric upload: " data)}] ;;data must be a
+    ;;string 
+    (doseq [channel (get-channels request)]
+      (httpkit/send! channel info))))
+
+
+
 
 (defresource static-resource [resource]
   :available-media-types #(let [file (get-in % [:request :route-params :resource])]      
@@ -78,7 +119,9 @@
                 (metric/malformed-upload-metric? ctx))
   :post! (fn [ctx]
            (let [row-id (db/insert-measures (ctx :parsed-metric))]
-             (update-ws-clients (ctx :parsed-metric))
+             (update-ws-clients
+              (ctx :query-params)
+              (ctx :parsed-metric))
              {:parsed-metric-id row-id}))
   :post-redirect? false
   :new? true
@@ -119,35 +162,19 @@
                  (-> (outliers/calculate-outliers selection)
                      (utils/format-result mediatype)))))
 
-(def ws-channels (atom {}))
-
-(defn add-channel [key channel]
-  )
-
-(defn remove-channel [channel]
-  )
-
-(defn get-channels [key]
-  )
 
 (defn web-socket [request]
   (httpkit/with-channel request channel
-    (swap! ws-channels assoc channel request)
+    (println request)
+    (add-channel request channel)
     (httpkit/on-close channel (fn [status]
                         (info "channel closed")
-                        (swap! ws-channels dissoc channel)))
+                        (remove-channel channel)))
     (httpkit/on-receive channel (fn [data]
                           (info "received data from channel " data)
                           (httpkit/send! channel data)))
     ))
 
-(defn update-ws-clients [data]
-  (let [info {:status 200
-              :headers {"Content-Type" "application/json; charset=utf-8"}
-              :body (str "Hello from metric upload: " data)}] ;;data must be a
-    ;;string 
-    (doseq [channel (keys @ws-channels)]
-      (httpkit/send! channel info))))
 
 ; the data-routes are wrapped in wrap-params and wrap-result-in-json
 (defroutes data-routes
@@ -157,7 +184,7 @@
   (GET "/count" []  count-metrics)
   (GET "/outliers/metric" [] outlier-detection)
   (GET "/static/:resource" [resource] static-resource)
-  (GET "/ws/" [] web-socket)
+  (GET "/ws/*" [] web-socket)
   )
 
 (def app
