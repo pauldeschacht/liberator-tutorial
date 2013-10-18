@@ -17,6 +17,8 @@
                  [org.clojure/data.xml "0.0.7" :debian nil]
                  [org.clojure/data.json "0.2.3" :debian nil]
                  [ring-mock "0.1.5" :scope "test" :debian nil]
+
+                 [couchbase-clj "0.1.2"]
                  ]
   :target-path "target"
   :plugins [[lein-debian "0.14.0-SNAPSHOT"]]
