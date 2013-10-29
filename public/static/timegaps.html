@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <script type="text/javascript" src="/static/d3.js"></script>
+    <script src="http://d3js.org/queue.v1.min.js"></script>
+    <style>
+    .axis {
+        font-family: arial;
+        font-size:0.6em;
+    }
+    path {
+        fill:none;
+        stroke:black;
+        stroke-width:2px;
+    }
+    .tick {
+        fill:none;
+        stroke:black;
+    }
+    circle{
+        stroke:black;
+        stroke-width:0.5px;
+    }
+    circle.times_square{
+        fill:black;
+    }
+    circle.times_square_outlier {
+        fill:red;
+    }
+    path.times_square{
+        stroke:DeepPink;
+    }
+    </style>
+</head>
+<body>
+    <script>
+
+    queue()
+    .defer(d3.csv, "/timegap/metric?service=paxairport&key=ACSA_gap", function(d) { /*d.time = new Date(+d.time);*/ d.time = +d.time; d.time = new Date(d.time*1000); return d;} )
+    .await(draw);
+
+    function draw(error, data) {
+        "use strict";
+        var margin = 50,
+            width = 960 - margin,
+            height = 300 - margin;
+        
+        var count_extent = d3.extent(
+            data.concat(data),
+            function(d){return d.measure}
+        );
+
+        var time_extent = d3.extent(
+            data.concat(data),
+            function(d){return d.time}
+        );
+
+        var count_scale = d3.scale.linear()
+            .domain(count_extent)
+            .range([height, margin]);
+        
+        var time_scale = d3.time.scale()
+            .domain(time_extent)
+            .range([margin, width]);
+        
+        var time_axis = d3.svg.axis()
+            .scale(time_scale)
+        .ticks(18).orient("bottom");
+
+        var count_scale_axis = d3.scale.linear()
+            .domain(d3.extent( data.concat(data), function(d) {return d.measure/10000;}))
+            .range([height,margin]);
+
+        var count_axis = d3.svg.axis()
+            .scale(count_scale_axis)
+            .orient("left")
+        
+        var line = d3.svg.line()
+            .x(function(d){return time_scale(d.time)})
+            .y(function(d){return count_scale(d.measure)})
+            .interpolate("linear")
+
+        d3.select("body") 
+          .append("svg")
+            .attr("class","chart") 
+            .attr("width", width+margin)
+            .attr("height", height+margin)
+        
+        d3.select('svg')
+          .append('path')
+            .attr('d', line(data))
+            .attr('class', 'ACSA')
+        
+        d3.select("svg")
+          .selectAll("circle")
+          .data(data)
+          .enter()
+          .append("circle")
+            .attr("class", function(d) {
+                if (d.outlier == "true") 
+                    return "times_square_outlier";
+                else return "times_square";});
+
+        d3.selectAll("circle")
+            .attr("cy", function(d){return count_scale(d.measure);})
+            .attr("cx", function(d){return time_scale(d.time);})
+            .attr("r", function(d){ if (d.outlier == "true") 
+                                    return 8;
+                                    else return 3;
+                                  });
+            
+        d3.select("svg")
+          .append("g")
+          .attr("class", "x axis")
+          .attr("transform", "translate(0," + height + ")")
+          .call(time_axis);
+         
+        d3.select("svg")
+          .append("g")
+          .attr("class", "y axis")
+          .attr("transform", "translate(" + margin + ",0)")
+          .call(count_axis);
+    
+      d3.select('.y.axis')
+          .append('text')
+          .text('pax for ACSA airports')
+          .attr('transform', "rotate (90, " + -margin + ", 0)")
+          .attr('x', 20)
+          .attr('y', 0)
+                    
+      d3.select('.x.axis')
+        .append('text')
+          .text('time')
+          .attr('x', function(){return (width / 1.6) - margin})
+          .attr('y', margin/1.5)
+    };
+//    d3.json("/outliers/metric?service=paxairport&key=ACSA", draw );
+
+</script>
+</body>
+</html>

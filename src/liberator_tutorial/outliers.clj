@@ -1,5 +1,5 @@
 (ns liberator-tutorial.outliers
-  (:require [liberator-tutorial.db :as db]
+  (:require [liberator-tutorial.db-couchbase :as db]
             [liberator-tutorial.request-utils :as utils]
             [liberator-tutorial.outlier.core :as outlier-core]
 
@@ -32,9 +32,17 @@
   )
 
 (defn calculate-outliers [selection]
-  (let [rows (db/retrieve-measures selection)
-        _ (warn "calculate outliers: " rows)
+  (let [rows (db/retrieve-metrics selection)
         metrics (utils/extract-metrics-from-rows rows)
         outliers (outlier-core/outliers-iqr metrics 9 1.5)]
     (insert-outlier-info-into-rows rows outliers)
+    ))
+
+(defn calculate-time-gaps [selection]
+  (let [rows (db/retrieve-metrics selection)
+        times (utils/extract-time-from-rows rows)
+        deltas (map (fn [t1 t2] (- t2 t1)) times (rest times))
+        outliers (outlier-core/outliers-iqr deltas 9 1.5)]
+    (insert-outlier-info-into-rows rows outliers)
+
     ))

@@ -1,5 +1,7 @@
 (ns liberator-tutorial.db-couchbase
-  (:require [couchbase-clj.client :as c]
+  (:require [liberator-tutorial.metric :as metric]
+            
+            [couchbase-clj.client :as c]
             [couchbase-clj.query :as q]
             [clojure.data.json :as json]
 
@@ -13,23 +15,12 @@
 (def service-key-view (c/get-view client "dev_metric" "servicekey"))
 (def host-service-key-view (c/get-view client "dev_metric" "hostservicekey"))
 
-(defn insert-metric [metric]
-  (let [id (str (:host metric) "_" (:service metric) "_" (:key metric) "_" (:time metric))
-        
-        inserted (c/add client (keyword id) (json/json-str metric))]
-    (assoc metric :id id)
-    )
-  )
-
-(defn insert-metrics [metrics]
-  (map #(insert-metric %) metrics))
-
-(defn timestamp [t]
+(defn- timestamp [t]
   (if (nil? t)
     ""
     (str " " t)))
 
-(defn merge-docs-with-ids
+(defn- merge-docs-with-ids
   "merge the document id with the document"
   [rows]
   (println "merge-docs-with-ids")
@@ -37,8 +28,9 @@
        (map c/view-doc-json rows)
        (map #(hash-map :id %) (map c/view-id rows))))
 
-(defn retrieve-metrics-service-key [service key from to]
-  (let [startkey (if (nil? from)
+(defn- retrieve-metrics-service-key [service key from to]
+  (let [_ (info "retrieve service key " service "," key "," from "," to)
+        startkey (if (nil? from)
                    {:range-start (vector service key)}
                    {:range-start (vector service key from)})
         endkey (if (nil? to)
@@ -52,7 +44,7 @@
     (merge-docs-with-ids rows)
     )
   )
-(defn retrieve-metrics-host-service-key [host service key from to]
+(defn- retrieve-metrics-host-service-key [host service key from to]
   (let [
         startkey (if (nil? from)
                    {:range-start (vector host service key)}
@@ -69,6 +61,24 @@
     )
   )
 
+(defn insert-metric [metric]
+  (let [id (metric/create-id metric)
+        _ (info "hash is " id)
+        inserted (c/add client (keyword id) (json/json-str metric))
+        ]
+    (assoc metric :id id :inserted inserted)
+    )
+  )
+
+(defn insert-metrics [metrics]
+  (map #(liberator-tutorial.db-couchbase/insert-metric %) metrics))
+
+
+(defn retrieve-metric [id]
+  (let [row (c/get-json client (keyword id))]
+    (when-not (nil? row)
+      (assoc row :id id))))
+
 (defn retrieve-metrics [selection]
   (let [{:keys [host service key tags from to]} selection
         switch [(nil? host) (nil? service) (nil? key)]]
@@ -78,5 +88,18 @@
       []
       )
     )
-)
+  )
+
+(defn delete-metric [id]
+  (when (c/delete client (keyword (:id%)))
+    {:id id}))
+
+(defn delete-metrics [selection]
+  (let [rows-to-delete (retrieve-metrics selection)]
+    (do
+      (map #(c/delete client (keyword (:id %))) rows-to-delete)
+      (map #(hash-map :id (:id %)) rows-to-delete)
+      ))
+  )
+
 

@@ -5,34 +5,93 @@
             
             [clj-time.core :as timecore]
             [clj-time.coerce :as timecoerce]
+            [clj-time.format :as timeformat]
+
+            [clj-message-digest.core :as digest]
             
             [clojure.tools.logging :refer (info error warn fatal)])
   
   )
 
+(defn create-id
+  "create a unique identifier for the metric. this field is used as key in couchbase."
+  [metric]
+  (digest/md5-hex (str (:host metric)
+                       (:service metric)
+                       (:key metric)
+                       (:epoch metric)) ))
 
-(defn format-upload-metric [metric]
-  (let [{:keys [host service key metric tags time]} metric]
-    (if (or (nil? service) (nil? key) (nil? metric) (and (not (nil? time)) (not ( integer? time))))
-      (let []
+(defn- valid-epoch?
+  "If the epoch field is present, it must be an integer. If the field is not present, the field is considered as valid."
+  [epoch]
+  (if (nil? epoch)
+    true
+    (integer? epoch))
+  )
+
+(defn- valid-iso-datetime
+  "If the datetime is nil, then return default value (now). If the datetime has the format YYYY-MM-dd or the format YYYY-MM-ddThh:mm:ssZ, then return the parsed DateTime instance, otherwise return nil"
+  [datetime]
+  (if (nil? datetime)
+    (timecore/now)
+    (let [len (count datetime)]
+      (if (= len 10)
+        (try
+          (timeformat/parse (timeformat/formatters :date) datetime)
+          (catch Exception e
+            nil)
+          )
+        (if (= len 20)
+          (try
+            (timeformat/parse (timeformat/formatters :date-time-no-ms) datetime)
+            (catch Exception e
+              nil))
+          nil)
+        ))))
+
+(defn create-timestamp
+  "If the metric contains a integer as epoch field, use this value as timestamp for the metric. If the epoch field is not present and the metric contains a datetime field, use the datetime as the timestamp. If neither epoch nor datetime are present, use now as timestamp for the metric.
+The timestamp for a metric is available as epoch and iso-.. fields.
+This function returns a map with {:epoch  :datetime }"
+  [metric]
+  (if (integer? (:epoch metric))
+    {:epoch (:epoch metric)
+     :datetime (timeformat/unparse
+                (timeformat/formatters :date-time-no-ms)
+                (timecoerce/from-long (:epoch metric)))}
+    (if-let [datetime (valid-iso-datetime (:datetime metric))]
+      {:epoch (timecoerce/to-long datetime)
+       :datetime (timeformat/unparse
+                  (timeformat/formatters :date-time-no-ms)
+                  datetime)}
+      (let [n (timecore/now)]
+        {:epoch (timecoerce/to-long n)
+         :datetime (timeformat/unparse
+                    (timeformat/formatters :date-time-no-ms)
+                    n)}))))
+
+;;TODO: if datetime is wrong format, the default value is taken, but
+;;instead a warning must be given.
+(defn format-metric
+  "Verify if the metric contains the mandatory fields: service, key and metric. If needed, enrich the uploaded metric with default values fields (epoch and/or datetime)."
+  [metric]
+  (let [{:keys [host service key metric tags epoch datetime]} metric]
+    (if (or (nil? service) (nil? key) (nil? metric) (not (valid-epoch? epoch)))
+      (do
         (warn "format-metric failed: " metric)
         false)
-      (let [time* (if (nil? time)
-                    (timecoerce/to-long (timecore/now))
-                    time)
-            result {:host host
-                    :service service
-                    :key key
-                    :metric metric
-                    :tags tags
-                    :time time*}]
-        result))))
+      (merge {:host host
+               :service service
+               :key key
+               :metric metric
+               :tags tags}
+              (create-timestamp metric)))))
 
 ; verify if every metric respects the mandatory fields (service, key and metric)
 ; return a vector of formatted metrics
 (defn format-upload-metrics [metrics]
   (if (map? metrics)
-    (let [metrics* (format-upload-metric metrics)]
+    (let [metrics* (format-metric metrics)]
       (if (false? metrics*)
         false
         [metrics*])

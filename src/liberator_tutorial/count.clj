@@ -1,5 +1,5 @@
 (ns liberator-tutorial.count
-  (:require [liberator-tutorial.db :as db]
+  (:require [liberator-tutorial.db-couchbase :as db]
             [liberator-tutorial.request-utils :as utils])
 )
 (defn malformed-count-metrics? [ctx]
@@ -18,7 +18,7 @@
   (utils/aggregate-data-by-period data count))
 
 (defn calculate-count [selection period]
-  (-> (db/retrieve-measures selection)
+  (-> (db/retrieve-metrics selection)
       (utils/epoch-to-date-rows)
       (utils/group-data-by-period period)
       (count-data-by-period)

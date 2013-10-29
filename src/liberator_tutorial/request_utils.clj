@@ -80,10 +80,15 @@
   (json/write-str rows :key-fn #(clojure.string/lower-case (name  %))))
 
 (defn rows-to-csv [rows]
-  (str
-   (apply str (interpose "," (map #(name %) (keys (first rows)))))
-   "\n"
-   (apply str (interpose "\n" (map #(row-to-csv %1) rows)))))
+  (if (map? rows)
+    (str
+     (apply str (interpose "," (map #(name %) (keys rows))))
+     "\n"
+     (apply str (interpose "," (vals rows))))
+    (str
+     (apply str (interpose "," (map #(name %) (keys (first rows)))))
+     "\n"
+     (apply str (interpose "\n" (map #(row-to-csv %1) rows))))))
 
 (defn format-result [rows mediatype]
   (condp = mediatype
@@ -107,3 +112,5 @@
 (defn extract-metrics-from-rows [rows]
   (map #(:measure %) rows))
 
+(defn extract-time-from-rows [rows]
+  (map #(:time %) rows))

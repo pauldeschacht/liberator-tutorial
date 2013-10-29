@@ -18,6 +18,8 @@
                  [org.clojure/data.json "0.2.3" :debian nil]
                  [ring-mock "0.1.5" :scope "test" :debian nil]
 
+                 [clj-message-digest "1.0.0" :debian nil]
+
                  [couchbase-clj "0.1.2"]
                  ]
   :target-path "target"

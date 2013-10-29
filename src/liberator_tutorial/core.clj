@@ -1,5 +1,5 @@
 (ns liberator-tutorial.core
-  (:require [liberator-tutorial.db :as db]
+  (:require [liberator-tutorial.db-couchbase :as db]
             [liberator-tutorial.request-utils :as utils]
             [liberator-tutorial.outliers :as outliers]
             [liberator-tutorial.metric :as metric]
@@ -12,7 +12,7 @@
 
                                         ;            [ring.adapter.jetty :refer [run-jetty]]
             [org.httpkit.server :as httpkit]
-            [compojure.core :refer [defroutes ANY POST GET]]
+            [compojure.core :refer [defroutes ANY POST GET PUT DELETE]]
             [compojure.handler]
             [ring.middleware.params]
             [ring.middleware.keyword-params]
@@ -46,46 +46,64 @@
   :allowed-methods [:get]
   :available-media-types ["text/plain" "text/json" "text/csv" "text/xml"]
   :malformed? (fn [ctx]
-                (logg ctx)
-                (logg (get-in ctx [:request :headers "accept"]))
-                (logg (get-in ctx [:resource :available-media-types]))
-                (logg "----------------")
-                (logg (liberator.conneg/best-allowed-content-type (get-in ctx [:request :headers "accept"])
-                                                                  ["text/plain" "text/csv" "text/json"]))
                 (metric/malformed-download-metric? ctx))
   :handle-ok (fn [ctx]
                (let [mediatype (get-in ctx [:representation :media-type])
-                     _ (logg mediatype)
-                     rows (db/retrieve-measures (:download-params ctx))
-]
-                 
+                     rows (db/retrieve-metrics (:download-params ctx))]
                  (utils/format-result rows mediatype)
-                  )))
+                 )))
 
-(defresource resource-download-metric [id]
+(defn insert-rows-in-response [rows]
+  (liberator.representation/ring-response {:body rows}))
+
+(defresource resource-delete-metric
+  :allowed-methods [:delete]
+  :available-media-types ["text/html" "text/json" "text/csv" "text/xml"]
+  :malformed? (fn [ctx]
+                (metric/malformed-download-metric? ctx))
+  :delete! (fn [ctx]
+             (let [mediatype (get-in ctx [:representation :media-type])]
+               (->
+                (db/delete-metrics (:download-params ctx))
+                (error)
+                (utils/format-result mediatype)
+                (insert-rows-in-response))))
+  :delete-enacted? true
+  )
+
+
+
+(defresource resource-download-metric-id [id]
   :allowed-methods [:get]
-  :available-media-types ["text/plain" "text/json" "text/csv" "text/xml"]
+  :available-media-types ["text/json" "text/csv" "text/xml" "text/plain"]
   :handle-ok (fn [ctx]
                (let [mediatype (get-in ctx [:representation :media-type])
-                     rows (db/retrieve-measures id)]
-                 (utils/format-result rows mediatype)
+                     row (db/retrieve-metric id)]
+                 (utils/format-result row mediatype)
                  )))
 
 (defresource resource-upload-metric
   :allowed-methods [:post]
   :available-media-types ["text/json"]
   :malformed? (fn [ctx]
-                (metric/malformed-upload-metric? ctx))
+                (metric/malformed-upload-metric? ctx)
+                )
   :post! (fn [ctx]
-           (let [row-id (db/insert-measures (ctx :parsed-metric))]
-             (ws/update-ws-clients (ctx :query-params) (ctx :parsed-metric))
-             {:parsed-metric-id row-id}))
+           (let [
+                 inserted-rows (db/insert-metrics (ctx :parsed-metric))
+                 ]
+;             (ws/update-ws-clients (ctx :query-params) (ctx :parsed-metric))
+           {:inserted-metrics inserted-rows})
+           )
   :post-redirect? false
   :new? true
   :handle-created (fn [ctx]
-                    (let [rowid (ctx :parsed-metric-id)
-                          location (format "/metric/%d" rowid)]
-                      (liberator.representation/ring-response {:headers {"Location" location "rowid" (str rowid)}})
+                    (let [inserted-metrics (ctx :inserted-metrics)
+                          _ (info inserted-metrics)]
+                      (->>
+                       (map #(assoc % :href (str "/metric/" (:id %))) inserted-metrics)
+                       (map #(dissoc % :id))
+                       (insert-rows-in-response))
                       )))
 
 (defresource count-metrics
@@ -113,12 +131,20 @@
                  (outliers/malformed-outliers? ctx))
   :handle-ok (fn [ctx]
                (let [mediatype (get-in ctx [:representation :media-type])
-                     selection (:download-params ctx)
-                     _ (info "Selection mediatype " mediatype)
-                     _ (info "Representation " (:representation ctx))]
+                     selection (:download-params ctx)]
                  (-> (outliers/calculate-outliers selection)
                      (utils/format-result mediatype)))))
 
+(defresource time-gap-detection
+  :allowed-methods [:get]
+  :available-media-types ["text/csv" "text/json" "text/xml"]
+  :malformed? (fn [ctx]
+                (metric/malformed-download-metric? ctx))
+  :handle-ok (fn [ctx]
+               (let [mediatype (get-in ctx [:representation :media-type])
+                     selection (:download-params ctx)]
+                 (-> (outliers/calculate-time-gaps selection)
+                     (utils/format-result mediatype)))))
 
 
 (defn web-socket [request]
@@ -135,10 +161,12 @@
 ; the data-routes are wrapped in wrap-params and wrap-result-in-json
 (defroutes data-routes
   (POST "/metric" [] resource-upload-metric)
-  (GET "/metric/:id" [id] (resource-download-metric id))
+  (GET "/metric/:id" [id] (resource-download-metric-id id))
   (GET "/metric" [] resource-download-metric)
+  (DELETE "/metric" [] resource-delete-metric)
   (GET "/count" []  count-metrics)
   (GET "/outliers/metric" [] outlier-detection)
+  (GET "/timegap/metric" [] time-gap-detection)
   (GET "/static/:resource" [resource] static-resource)
   (GET "/ws/*" [] web-socket)
   )
